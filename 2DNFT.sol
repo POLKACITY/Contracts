@@ -1,10 +1,6 @@
-/**
- *Submitted for verification at Etherscan.io on 2021-02-23
-*/
-
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.0;
+pragma solidity 0.8.2;
 
 
 interface IERC165 {
@@ -1035,7 +1031,7 @@ contract ERC721 is ERC165, IERC721, IERC721Metadata, IERC721Enumerable, Ownable 
     
     mapping (uint256 => assetDetail) assetsDetails;
     address public sellingContract;
-    uint256 public polkaCitizens = 0;
+    uint256 public polkaCitizens;
 
     // Token name
     string private _name;
@@ -1047,6 +1043,15 @@ contract ERC721 is ERC165, IERC721, IERC721Metadata, IERC721Enumerable, Ownable 
     string private _baseURI;
     
     Counters.Counter private _tokenIdTracker;
+    
+    mapping (address => bool) public managers;
+    uint8 private managersCount;
+    uint16 public taskIndex;
+
+    modifier isManager() {
+        require(managers[msg.sender] == true, "Not manager");
+        _;
+    }
 
     /**
      * @dev Initializes the contract by setting a `name` and a `symbol` to the token collection.
@@ -1311,10 +1316,10 @@ contract ERC721 is ERC165, IERC721, IERC721Metadata, IERC721Enumerable, Ownable 
 
         _beforeTokenTransfer(address(0), to, tokenId);
 
-        _holderTokens[to].add(tokenId);
+        bool addTokenToHolder = _holderTokens[to].add(tokenId);
 
-        _tokenOwners.set(tokenId, to);
-
+        bool setTokenOwner = _tokenOwners.set(tokenId, to);
+        require(addTokenToHolder && setTokenOwner, "Transaction failed");
         emit Transfer(address(0), to, tokenId);
     }
 
@@ -1339,10 +1344,10 @@ contract ERC721 is ERC165, IERC721, IERC721Metadata, IERC721Enumerable, Ownable 
         // Clear approvals from the previous owner
         _approve(address(0), tokenId);
 
-        _holderTokens[from].remove(tokenId);
-        _holderTokens[to].add(tokenId);
-
-        _tokenOwners.set(tokenId, to);
+        bool removeTokenFromHolder = _holderTokens[from].remove(tokenId);
+        bool addTokenToHolder = _holderTokens[to].add(tokenId);
+        bool setTokenOwner = _tokenOwners.set(tokenId, to);
+        require(removeTokenFromHolder && addTokenToHolder && setTokenOwner, "Transaction failed");
         assetsDetails[tokenId].lastTrade = uint32(block.timestamp);
         checkCitizen(to, true);
         checkCitizen(from, false);
@@ -1435,11 +1440,17 @@ contract ERC721 is ERC165, IERC721, IERC721Metadata, IERC721Enumerable, Ownable 
         return true;
     }
     
-    function setMinter(address _minterAddress, bool _canMint) public onlyOwner {
+    function setMinter(address _minterAddress, bool _canMint, bytes memory _sig) public isManager {
+        uint8 mId = 1;
+        bytes32 taskHash = keccak256(abi.encode(_minterAddress, _canMint, taskIndex, mId));
+        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
         minters[_minterAddress] = _canMint;
     }
     
-    function setProfitsContract(address _contract) public onlyOwner {
+    function setProfitsContract(address _contract, bytes memory _sig) public isManager {
+        uint8 mId = 2;
+        bytes32 taskHash = keccak256(abi.encode(_contract, taskIndex, mId));
+        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
         profitsContract = _contract;
     }
     
@@ -1448,11 +1459,44 @@ contract ERC721 is ERC165, IERC721, IERC721Metadata, IERC721Enumerable, Ownable 
         assetsDetails[_asset].lastPayment = uint32(block.timestamp);
     }
     
-    function addAssetType(uint64 _assetId, uint64 _maxAmount, uint256 _baseValue) public onlyOwner {
+    function addAssetType(uint64 _assetId, uint64 _maxAmount, uint256 _baseValue, bytes memory _sig) public isManager {
         require(_maxAmount > 0 && _baseValue > 0);
         require(assetsByType[_assetId].maxAmount > 0);
+        uint8 mId = 3;
+        bytes32 taskHash = keccak256(abi.encode(_assetId, _maxAmount, _baseValue, taskIndex, mId));
+        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
         initAssets(_assetId, _maxAmount, _baseValue);
     }
 
+        function splitSignature(bytes memory _sig) internal pure returns (uint8, bytes32, bytes32)  {
+        require(_sig.length == 65);
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
     
+        assembly {
+          r := mload(add(_sig, 32))
+          s := mload(add(_sig, 64))
+          v := byte(0, mload(add(_sig, 96)))
+        }
+        return (v, r, s);
+    }
+
+    function recoverSigner(bytes32 message, bytes memory _sig) internal pure returns (address)  {
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+        (v, r, s) = splitSignature(_sig);
+        return ecrecover(message, v, r, s);
+    }
+  
+    function verifyApproval(bytes32 _taskHash, bytes memory _sig) private returns(bool approved) {
+        address signer = recoverSigner(_taskHash, _sig);
+        if (managers[signer] == true){
+            taskIndex +=1;
+            return(true);
+        } else {
+            return(false);
+        }
+    }
 }
