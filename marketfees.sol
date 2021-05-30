@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.0;
+pragma solidity 0.8.2;
 
 interface IERC721 {
     function getTokenDetails(uint256 index) external view returns (uint32 aType, uint32 customDetails, uint32 lastTx, uint32 lastPayment, uint256 initialvalue, string memory coin);
@@ -45,7 +45,16 @@ contract MarketFees is Ownable {
     mapping (address => FeeFactor) public tokenFee;
     
     uint256 public ethFeeFactor;
-    
+
+    mapping (address => bool) public managers;
+    uint8 private managersCount;
+    uint16 public taskIndex;
+
+    modifier isManager() {
+        require(managers[msg.sender] == true, "Not manager");
+        _;
+    }
+
     constructor() {
         nftContract = IERC721(0xB20217bf3d89667Fa15907971866acD6CcD570C8);
         zerofeeAssets[24] = true;
@@ -91,15 +100,51 @@ contract MarketFees is Ownable {
         }
     }
     
-    function setTokenFee(address _token, uint256 _mulFactor, uint256 _divFactor) public onlyOwner {
+    function setTokenFee(address _token, uint256 _mulFactor, uint256 _divFactor, bytes memory _sig) public isManager {
+        uint8 mId = 1;
+        bytes32 taskHash = keccak256(abi.encode(_token, _mulFactor, _divFactor, taskIndex, mId));
+        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
         tokenFee[_token].mulFactor = _mulFactor;
         tokenFee[_token].divFactor = _divFactor;
     }
     
-    function setEthFee(uint256 _fee) public onlyOwner {
+    function setEthFee(uint256 _fee, bytes memory _sig) public isManager {
+        uint8 mId = 2;
+        bytes32 taskHash = keccak256(abi.encode(_fee, taskIndex, mId));
+        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
         ethFeeFactor = _fee;
     }
     
+    function splitSignature(bytes memory _sig) internal pure returns (uint8, bytes32, bytes32)  {
+        require(_sig.length == 65);
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
     
+        assembly {
+          r := mload(add(_sig, 32))
+          s := mload(add(_sig, 64))
+          v := byte(0, mload(add(_sig, 96)))
+        }
+        return (v, r, s);
+    }
+
+    function recoverSigner(bytes32 message, bytes memory _sig) internal pure returns (address)  {
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+        (v, r, s) = splitSignature(_sig);
+        return ecrecover(message, v, r, s);
+    }
+  
+    function verifyApproval(bytes32 _taskHash, bytes memory _sig) private returns(bool approved) {
+        address signer = recoverSigner(_taskHash, _sig);
+        if (managers[signer] == true){
+            taskIndex +=1;
+            return(true);
+        } else {
+            return(false);
+        }
+    }
     
 }
