@@ -1,10 +1,6 @@
-/**
- *Submitted for verification at Etherscan.io on 2021-04-08
-*/
-
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.0;
+pragma solidity 0.8.2;
 
 interface IERC721 {
     function ownerOf(uint256 tokenId) external view returns (address owner);
@@ -12,10 +8,18 @@ interface IERC721 {
     function transferFrom(address from, address to, uint256 tokenId) external;
     function isApprovedForAll(address owner, address operator) external view returns (bool);
 }
-interface IERC20Token {
-    function transferFrom(address _from, address _to, uint256 _value) external returns (bool success);
+
+interface IERC20 {
+    function totalSupply() external view returns (uint256);
+    function balanceOf(address account) external view returns (uint256);
     function transfer(address recipient, uint256 amount) external returns (bool);
+    function allowance(address owner, address spender) external view returns (uint256);
+    function approve(address spender, uint256 amount) external returns (bool);
+    function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
 }
+
 interface FeesContract {
     function calcByToken(address _seller, address _token, uint256 _amount) external view returns (uint256 fee);
     function calcByEth(address _seller, uint256 _amount) external view returns (uint256 fee);
@@ -530,6 +534,162 @@ library EnumerableSet {
     }
 }
 
+library Address {
+
+    function isContract(address account) internal view returns (bool) {
+        // This method relies on extcodesize, which returns 0 for contracts in
+        // construction, since the code is only stored at the end of the
+        // constructor execution.
+
+        uint256 size;
+        // solhint-disable-next-line no-inline-assembly
+        assembly { size := extcodesize(account) }
+        return size > 0;
+    }
+
+
+    function sendValue(address payable recipient, uint256 amount) internal {
+        require(address(this).balance >= amount, "Address: insufficient balance");
+
+        // solhint-disable-next-line avoid-low-level-calls, avoid-call-value
+        (bool success, ) = recipient.call{ value: amount }("");
+        require(success, "Address: unable to send value, recipient may have reverted");
+    }
+
+   
+    function functionCall(address target, bytes memory data) internal returns (bytes memory) {
+      return functionCall(target, data, "Address: low-level call failed");
+    }
+
+    
+    function functionCall(address target, bytes memory data, string memory errorMessage) internal returns (bytes memory) {
+        return functionCallWithValue(target, data, 0, errorMessage);
+    }
+
+    
+    function functionCallWithValue(address target, bytes memory data, uint256 value) internal returns (bytes memory) {
+        return functionCallWithValue(target, data, value, "Address: low-level call with value failed");
+    }
+
+    
+    function functionCallWithValue(address target, bytes memory data, uint256 value, string memory errorMessage) internal returns (bytes memory) {
+        require(address(this).balance >= value, "Address: insufficient balance for call");
+        require(isContract(target), "Address: call to non-contract");
+
+        // solhint-disable-next-line avoid-low-level-calls
+        (bool success, bytes memory returndata) = target.call{ value: value }(data);
+        return _verifyCallResult(success, returndata, errorMessage);
+    }
+
+   
+    function functionStaticCall(address target, bytes memory data) internal view returns (bytes memory) {
+        return functionStaticCall(target, data, "Address: low-level static call failed");
+    }
+
+    
+    function functionStaticCall(address target, bytes memory data, string memory errorMessage) internal view returns (bytes memory) {
+        require(isContract(target), "Address: static call to non-contract");
+
+        // solhint-disable-next-line avoid-low-level-calls
+        (bool success, bytes memory returndata) = target.staticcall(data);
+        return _verifyCallResult(success, returndata, errorMessage);
+    }
+
+   
+    function functionDelegateCall(address target, bytes memory data) internal returns (bytes memory) {
+        return functionDelegateCall(target, data, "Address: low-level delegate call failed");
+    }
+
+  
+    function functionDelegateCall(address target, bytes memory data, string memory errorMessage) internal returns (bytes memory) {
+        require(isContract(target), "Address: delegate call to non-contract");
+
+        // solhint-disable-next-line avoid-low-level-calls
+        (bool success, bytes memory returndata) = target.delegatecall(data);
+        return _verifyCallResult(success, returndata, errorMessage);
+    }
+
+    function _verifyCallResult(bool success, bytes memory returndata, string memory errorMessage) private pure returns(bytes memory) {
+        if (success) {
+            return returndata;
+        } else {
+            // Look for revert reason and bubble it up if present
+            if (returndata.length > 0) {
+                // The easiest way to bubble the revert reason is using memory via assembly
+
+                // solhint-disable-next-line no-inline-assembly
+                assembly {
+                    let returndata_size := mload(returndata)
+                    revert(add(32, returndata), returndata_size)
+                }
+            } else {
+                revert(errorMessage);
+            }
+        }
+    }
+}
+
+library SafeERC20 {
+    using Address for address;
+
+    function safeTransfer(IERC20 token, address to, uint256 value) internal {
+        _callOptionalReturn(token, abi.encodeWithSelector(token.transfer.selector, to, value));
+    }
+
+    function safeTransferFrom(IERC20 token, address from, address to, uint256 value) internal {
+        _callOptionalReturn(token, abi.encodeWithSelector(token.transferFrom.selector, from, to, value));
+    }
+
+    /**
+     * @dev Deprecated. This function has issues similar to the ones found in
+     * {IERC20-approve}, and its usage is discouraged.
+     *
+     * Whenever possible, use {safeIncreaseAllowance} and
+     * {safeDecreaseAllowance} instead.
+     */
+    function safeApprove(IERC20 token, address spender, uint256 value) internal {
+        // safeApprove should only be called when setting an initial allowance,
+        // or when resetting it to zero. To increase and decrease it, use
+        // 'safeIncreaseAllowance' and 'safeDecreaseAllowance'
+        // solhint-disable-next-line max-line-length
+        require((value == 0) || (token.allowance(address(this), spender) == 0),
+            "SafeERC20: approve from non-zero to non-zero allowance"
+        );
+        _callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, value));
+    }
+
+    function safeIncreaseAllowance(IERC20 token, address spender, uint256 value) internal {
+        uint256 newAllowance = token.allowance(address(this), spender) + value;
+        _callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, newAllowance));
+    }
+
+    function safeDecreaseAllowance(IERC20 token, address spender, uint256 value) internal {
+        unchecked {
+            uint256 oldAllowance = token.allowance(address(this), spender);
+            require(oldAllowance >= value, "SafeERC20: decreased allowance below zero");
+            uint256 newAllowance = oldAllowance - value;
+            _callOptionalReturn(token, abi.encodeWithSelector(token.approve.selector, spender, newAllowance));
+        }
+    }
+
+    /**
+     * @dev Imitates a Solidity high-level call (i.e. a regular function call to a contract), relaxing the requirement
+     * on the return value: the return value is optional (but if data is returned, it must not be false).
+     * @param token The token targeted by the call.
+     * @param data The call data (encoded using abi.encode or one of its variants).
+     */
+    function _callOptionalReturn(IERC20 token, bytes memory data) private {
+        // We need to perform a low level call here, to bypass Solidity's return data size checking mechanism, since
+        // we're implementing it ourselves. We use {Address.functionCall} to perform this call, which verifies that
+        // the target address contains contract code and also asserts for success in the low-level call.
+
+        bytes memory returndata = address(token).functionCall(data, "SafeERC20: low-level call failed");
+        if (returndata.length > 0) { // Return data is optional
+            // solhint-disable-next-line max-line-length
+            require(abi.decode(returndata, (bool)), "SafeERC20: ERC20 operation did not succeed");
+        }
+    }
+}
 
 contract Ownable {
 
@@ -561,32 +721,39 @@ contract Ownable {
 contract Market is Ownable {
     using EnumerableSet for EnumerableSet.Bytes32Set ;
     using EnumerableMap for EnumerableMap.UintToB32Map;
+    using SafeERC20 for IERC20;
     
     struct Coin {
+        bool active;
         address tokenAddress;
         string symbol;
         string name;
-        bool active;
     }
+    
     mapping (uint256 => Coin) public tradeCoins;
     
     struct Trade {
         uint256 indexedBy;
+        bool active; 
         address nftAddress;
         address seller;
         address buyer;
         uint256 assetId;
-        uint256 start;
         uint256 end;
         uint256 stime;
         uint256 price;
         uint256 coinIndex;
-        bool active; 
+        
     }
+    
+    mapping (address => bool) public managers;
+    uint8 private managersCount;
+    uint16 public taskIndex;
     
     mapping (address => bool) public authorizedERC721;
     mapping (uint256 => bytes32) public tradeIndex;
     mapping (bytes32 => Trade) public trades;
+    mapping (bytes32 => bool) public tradingCheck;
 
     EnumerableMap.UintToB32Map private tradesMap;
     mapping (address => EnumerableSet.Bytes32Set) private userTrades;
@@ -594,6 +761,11 @@ contract Market is Ownable {
     uint256 nextTrade;
     FeesContract feesContract;
     address payable walletAddress;
+    
+    modifier isManager() {
+        require(managers[msg.sender] == true, "Not manager");
+        _;
+    }
     
     constructor() {
         // include ETH as coin
@@ -615,38 +787,42 @@ contract Market is Ownable {
         
         walletAddress = payable(0xAD334543437EF71642Ee59285bAf2F4DAcBA613F);
         
-
+        managers[msg.sender] = true;
+        managersCount += 1;
     }
     
     function createTrade(address _nftAddress, uint256 _assetId, uint256 _price, uint256 _coinIndex, uint256 _end) public {
         require(authorizedERC721[_nftAddress] == true, "Unauthorized asset");
         require(tradeCoins[_coinIndex].active == true, "Invalid payment coin");
         require(_end == 0 || _end > block.timestamp, "Invalid end time");
+        bytes32 atCheck = keccak256(abi.encode(_nftAddress, _assetId, msg.sender));
+        require(tradingCheck[atCheck] == false, "This asset is already listed");
         IERC721 nftContract = IERC721(_nftAddress);
         require(nftContract.ownerOf(_assetId) == msg.sender, "Only asset owner can sell");
         require(nftContract.isApprovedForAll(msg.sender, address(this)), "Market needs operator approval");
-        insertTrade(_nftAddress, _assetId, _price, _coinIndex, _end);
+        insertTrade(_nftAddress, _assetId, _price, _coinIndex, _end, atCheck);
     }
     
-    function insertTrade(address _nftAddress, uint256 _assetId, uint256 _price, uint256 _coinIndex, uint256 _end) private {
-        Trade memory trade = Trade(nextTrade, _nftAddress, msg.sender, address(0x0), _assetId, block.timestamp, _end, 0, _price, _coinIndex, true);
+    function insertTrade(address _nftAddress, uint256 _assetId, uint256 _price, uint256 _coinIndex, uint256 _end, bytes32 _atCheck) private {
+        Trade memory trade = Trade(nextTrade, true, _nftAddress, msg.sender, address(0x0), _assetId, _end, block.timestamp, _price, _coinIndex);
         bytes32 tradeHash = keccak256(abi.encode(_nftAddress, _assetId, nextTrade));
         tradeIndex[nextTrade] = tradeHash;
         trades[tradeHash] = trade;
         tradesMap.set(nextTrade, tradeHash);
         userTrades[msg.sender].add(tradeHash);
+        tradingCheck[_atCheck] == true;
         nextTrade += 1;
     }
     
-    function allTradesCount() public view returns (uint256 count) {
+    function allTradesCount() public view returns (uint256) {
         return (nextTrade);
     }
 
-    function tradesCount() public view returns (uint256 count) {
+    function tradesCount() public view returns (uint256) {
         return (tradesMap.length());
     }
     
-    function _getTrade(bytes32 _tradeId) private view returns (uint256 indexedBy, address nftToken, address seller, address buyer, uint256 assetId, uint256 start, uint256 end, uint256 soldDate, uint256 price, uint256 coinIndex, bool active) {
+    function _getTrade(bytes32 _tradeId) private view returns (uint256 indexedBy, address nftToken, address seller, address buyer, uint256 assetId, uint256 end, uint256 soldDate, uint256 price, uint256 coinIndex, bool active) {
         Trade memory _trade = trades[_tradeId];
         return (
         _trade.indexedBy,
@@ -654,7 +830,6 @@ contract Market is Ownable {
         _trade.seller,
         _trade.buyer,
         _trade.assetId,
-        _trade.start,
         _trade.end,
         _trade.stime,
         _trade.price,
@@ -664,11 +839,11 @@ contract Market is Ownable {
 
     }
 
-    function getTrade(bytes32 _tradeId) public view returns (uint256 indexedBy, address nftToken, address seller, address buyer, uint256 assetId, uint256 start, uint256 end, uint256 soldDate, uint256 price, uint256 coinIndex, bool active) {
+    function getTrade(bytes32 _tradeId) public view returns (uint256 indexedBy, address nftToken, address seller, address buyer, uint256 assetId, uint256 end, uint256 soldDate, uint256 price, uint256 coinIndex, bool active) {
         return _getTrade(_tradeId);
     }
     
-    function getTradeByIndex(uint256 _index) public view returns (uint256 indexedBy, address nftToken, address seller, address buyer, uint256 assetId, uint256 start, uint256 end, uint256 soldDate, uint256 price, uint256 coinIndex, bool active) {
+    function getTradeByIndex(uint256 _index) public view returns (uint256 indexedBy, address nftToken, address seller, address buyer, uint256 assetId, uint256 end, uint256 soldDate, uint256 price, uint256 coinIndex, bool active) {
         (, bytes32 tradeId) = tradesMap.at(_index);
         return _getTrade(tradeId);
     }
@@ -679,22 +854,23 @@ contract Market is Ownable {
         return parsed;
     }
     
-    function receiveApproval(address _from, uint256 _value, address _token, bytes memory _extraData) public returns (bool success) {
+    function receiveApproval(address _from, uint256 _value, address _token, bytes memory _extraData) public returns (bool) {
         bytes32 _tradeId = parseBytes(_extraData);
         Trade memory trade = trades[_tradeId];
         require(tradeCoins[trade.coinIndex].tokenAddress == _token, "Invalid coin");
         require(trade.active == true, "Trade not available");
         require(_value == trade.price, "Invalid price");
         if (verifyTrade(_tradeId, trade.seller, trade.nftAddress, trade.assetId, trade.end)) {
-            uint256 tradeFee = feesContract.calcByToken(trade.seller, tradeCoins[trade.coinIndex].tokenAddress , _value);
-            IERC20Token erc20Token = IERC20Token(_token);  
-            if (tradeFee > 0) {
-                require(erc20Token.transferFrom(_from, trade.seller, (trade.price-tradeFee)), "ERC20 transfer fail");
-                require(erc20Token.transferFrom(_from, walletAddress, (tradeFee)), "ERC20 transfer fail");
-            } else {
-                require(erc20Token.transferFrom(_from, trade.seller, (trade.price)), "ERC20 transfer fail");
-            }
+            uint256 tradeFee = feesContract.calcByToken(trade.seller, tradeCoins[trade.coinIndex].tokenAddress , _value); 
             executeTrade(_tradeId, _from, trade.seller, trade.nftAddress, trade.assetId);
+            IERC20 erc20Token = IERC20(_token); 
+            if (tradeFee > 0) {
+                erc20Token.safeTransferFrom(_from, trade.seller, (trade.price-tradeFee));
+                erc20Token.safeTransferFrom(_from, walletAddress, (tradeFee));
+            } else {
+                erc20Token.safeTransferFrom(_from, trade.seller, (trade.price));
+            }
+            
             return (true);
         } else {
             return (false);
@@ -702,18 +878,20 @@ contract Market is Ownable {
 
     }
     
-    function buyWithEth(bytes32 _tradeId) public payable returns (bool success) {
+    function buyWithEth(bytes32 _tradeId) public payable returns (bool) {
         Trade memory trade = trades[_tradeId];
         require(trade.coinIndex == 1, "Invalid coin");
         require(trade.active == true, "Trade not available");
         require(msg.value == trade.price, "Invalid price");
         if (verifyTrade(_tradeId, trade.seller, trade.nftAddress, trade.assetId, trade.end)) {
             uint256 tradeFee = feesContract.calcByEth(trade.seller, msg.value);
-            if (tradeFee > 0) {
-                walletAddress.transfer(msg.value);
-            }
-            payable(trade.seller).transfer(msg.value-tradeFee);
             executeTrade(_tradeId, msg.sender, trade.seller, trade.nftAddress, trade.assetId);
+            if (tradeFee > 0) {
+              Address.sendValue(payable(walletAddress), tradeFee);
+              Address.sendValue(payable(trade.seller),(msg.value-tradeFee));
+            } else {
+              Address.sendValue(payable(trade.seller),(msg.value));
+            }
             return (true);
         } else {
             return (false);
@@ -722,16 +900,17 @@ contract Market is Ownable {
     }
     
     function executeTrade(bytes32 _tradeId, address _buyer, address _seller, address _contract, uint256 _assetId) private {
-        IERC721 nftToken = IERC721(_contract);
-        nftToken.safeTransferFrom(_seller, _buyer, _assetId);
         trades[_tradeId].buyer = _buyer;
         trades[_tradeId].active = false;
         trades[_tradeId].stime = block.timestamp;
         userTrades[_seller].remove(_tradeId);
         tradesMap.remove(trades[_tradeId].indexedBy);
+        tradingCheck[keccak256(abi.encode(_contract, _assetId, _seller))] = false;
+        IERC721 nftToken = IERC721(_contract);
+        nftToken.safeTransferFrom(_seller, _buyer, _assetId);
     }
     
-    function verifyTrade(bytes32 _tradeId, address _seller, address _contract, uint256 _assetId, uint256 _endTime) private returns (bool _valid) {
+    function verifyTrade(bytes32 _tradeId, address _seller, address _contract, uint256 _assetId, uint256 _endTime) private returns (bool) {
         IERC721 nftToken = IERC721(_contract);
         address assetOwner = nftToken.ownerOf(_assetId);
         if (assetOwner != _seller || (_endTime > 0 && _endTime < block.timestamp)) {
@@ -744,23 +923,28 @@ contract Market is Ownable {
         }
     }
 
-    function cancelTrade(bytes32 _tradeId) public returns (bool success) {
+    function cancelTrade(bytes32 _tradeId) public returns (bool) {
         Trade memory trade = trades[_tradeId];
         require(trade.seller == msg.sender, "Only asset seller can cancel the trade");
         trades[_tradeId].active = false;
         userTrades[trade.seller].remove(_tradeId);
         tradesMap.remove(trade.indexedBy);
+        tradingCheck[keccak256(abi.encode(trade.nftAddress, trade.assetId, trade.seller))] = false;
         return true;
     }
 
-    function adminCancelTrade(bytes32 _tradeId) public onlyOwner {
+    function adminCancelTrade(bytes32 _tradeId, bytes memory _sig) public isManager {
+        uint8 mId = 8;
+        bytes32 taskHash = keccak256(abi.encode(_tradeId, taskIndex, mId));
+        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
         Trade memory trade = trades[_tradeId];
         trades[_tradeId].active = false;
         userTrades[trade.seller].remove(_tradeId);
         tradesMap.remove(trade.indexedBy);
+        tradingCheck[keccak256(abi.encode(trade.nftAddress, trade.assetId, trade.seller))] = false;
     }
     
-    function tradesCountOf(address _from) public view returns (uint256 _count) {
+    function tradesCountOf(address _from) public view returns (uint256) {
         return (userTrades[_from].length());
     }
     
@@ -768,27 +952,97 @@ contract Market is Ownable {
         return (userTrades[_from].at(_index));
     }
     
-    function addCoin(uint256 _coinIndex, address _tokenAddress, string memory _tokenSymbol, string memory _tokenName, bool _active) public onlyOwner {
+    function addCoin(uint256 _coinIndex, address _tokenAddress, string memory _tokenSymbol, string memory _tokenName, bool _active, bytes memory _sig) public isManager {
+        uint8 mId = 7;
+        bytes32 taskHash = keccak256(abi.encode(_coinIndex, _tokenAddress, _tokenSymbol, _tokenName, _active, taskIndex, mId));
+        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
         tradeCoins[_coinIndex].tokenAddress = _tokenAddress;
         tradeCoins[_coinIndex].symbol = _tokenSymbol;
         tradeCoins[_coinIndex].name = _tokenName;
         tradeCoins[_coinIndex].active = _active;
     }
 
-    function autorizenft(address _nftAddress) public onlyOwner {
+    function autorizenft(address _nftAddress, bytes memory _sig) public isManager {
+        uint8 mId = 6;
+        bytes32 taskHash = keccak256(abi.encode(_nftAddress, taskIndex, mId));
+        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
         authorizedERC721[_nftAddress] = true;
     }
     
-    function deautorizenft(address _nftAddress) public onlyOwner {
+    function deautorizenft(address _nftAddress, bytes memory _sig) public isManager {
+        uint8 mId = 5;
+        bytes32 taskHash = keccak256(abi.encode(_nftAddress, taskIndex, mId));
+        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
         authorizedERC721[_nftAddress] = false;
     }
     
-    function setFeesContract(address _contract) public onlyOwner {
+    function setFeesContract(address _contract, bytes memory _sig) public isManager {
+        uint8 mId = 4;
+        bytes32 taskHash = keccak256(abi.encode(_contract, taskIndex, mId));
+        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
         feesContract = FeesContract(_contract);
     }
     
-    function setWallet(address _wallet) public onlyOwner {
+    function setWallet(address _wallet, bytes memory _sig) public isManager  {
+        uint8 mId = 3;
+        bytes32 taskHash = keccak256(abi.encode(_wallet, taskIndex, mId));
+        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
         walletAddress = payable(_wallet);
     }
+    
+    function splitSignature(bytes memory _sig) internal pure returns (uint8, bytes32, bytes32)  {
+        require(_sig.length == 65);
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+    
+        assembly {
+          r := mload(add(_sig, 32))
+          s := mload(add(_sig, 64))
+          v := byte(0, mload(add(_sig, 96)))
+        }
+        return (v, r, s);
+    }
+
+    function recoverSigner(bytes32 message, bytes memory _sig) internal pure returns (address)  {
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+        (v, r, s) = splitSignature(_sig);
+        return ecrecover(message, v, r, s);
+    }
+  
+    function verifyApproval(bytes32 _taskHash, bytes memory _sig) private returns(bool approved) {
+        address signer = recoverSigner(_taskHash, _sig);
+        if (managers[signer] == true){
+            taskIndex +=1;
+            return(true);
+        } else {
+            return(false);
+        }
+    }
+    
+    function addManager(address _manager) public onlyOwner {
+        require(managersCount < 3, "Adding another manager requires 2nd approval");
+        managers[_manager] = true;
+    }
+    
+    function addManager(address _manager, bytes memory _sig) public isManager {
+        uint8 mId = 1;
+        bytes32 taskHash = keccak256(abi.encode(_manager, taskIndex, mId));
+        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
+        managers[_manager] = true;
+        managersCount += 1;
+    }
+    
+    function removeManager(address _manager, bytes memory _sig) public isManager {
+        require(managersCount > 3, "A minimum of 3 managers are required");
+        uint8 mId = 2;
+        bytes32 taskHash = keccak256(abi.encode(_manager, taskIndex, mId));
+        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
+        managers[_manager] = false;
+        managersCount -= 1;
+    }
+    
     
 }
