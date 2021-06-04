@@ -691,6 +691,112 @@ library SafeERC20 {
     }
 }
 
+library ECDSA {
+    /**
+     * @dev Returns the address that signed a hashed message (`hash`) with
+     * `signature`. This address can then be used for verification purposes.
+     *
+     * The `ecrecover` EVM opcode allows for malleable (non-unique) signatures:
+     * this function rejects them by requiring the `s` value to be in the lower
+     * half order, and the `v` value to be either 27 or 28.
+     *
+     * IMPORTANT: `hash` _must_ be the result of a hash operation for the
+     * verification to be secure: it is possible to craft signatures that
+     * recover to arbitrary addresses for non-hashed data. A safe way to ensure
+     * this is by receiving a hash of the original message (which may otherwise
+     * be too long), and then calling {toEthSignedMessageHash} on it.
+     *
+     * Documentation for signature generation:
+     * - with https://web3js.readthedocs.io/en/v1.3.4/web3-eth-accounts.html#sign[Web3.js]
+     * - with https://docs.ethers.io/v5/api/signer/#Signer-signMessage[ethers]
+     */
+    function recover(bytes32 hash, bytes memory signature) internal pure returns (address) {
+        // Divide the signature in r, s and v variables
+        bytes32 r;
+        bytes32 s;
+        uint8 v;
+
+        // Check the signature length
+        // - case 65: r,s,v signature (standard)
+        // - case 64: r,vs signature (cf https://eips.ethereum.org/EIPS/eip-2098) _Available since v4.1._
+        if (signature.length == 65) {
+            // ecrecover takes the signature parameters, and the only way to get them
+            // currently is to use assembly.
+            // solhint-disable-next-line no-inline-assembly
+            assembly {
+                r := mload(add(signature, 0x20))
+                s := mload(add(signature, 0x40))
+                v := byte(0, mload(add(signature, 0x60)))
+            }
+        } else if (signature.length == 64) {
+            // ecrecover takes the signature parameters, and the only way to get them
+            // currently is to use assembly.
+            // solhint-disable-next-line no-inline-assembly
+            assembly {
+                let vs := mload(add(signature, 0x40))
+                r := mload(add(signature, 0x20))
+                s := and(vs, 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff)
+                v := add(shr(255, vs), 27)
+            }
+        } else {
+            revert("ECDSA: invalid signature length");
+        }
+
+        return recover(hash, v, r, s);
+    }
+
+    /**
+     * @dev Overload of {ECDSA-recover} that receives the `v`,
+     * `r` and `s` signature fields separately.
+     */
+    function recover(bytes32 hash, uint8 v, bytes32 r, bytes32 s) internal pure returns (address) {
+        // EIP-2 still allows signature malleability for ecrecover(). Remove this possibility and make the signature
+        // unique. Appendix F in the Ethereum Yellow paper (https://ethereum.github.io/yellowpaper/paper.pdf), defines
+        // the valid range for s in (281): 0 < s < secp256k1n ÷ 2 + 1, and for v in (282): v ∈ {27, 28}. Most
+        // signatures from current libraries generate a unique signature with an s-value in the lower half order.
+        //
+        // If your library generates malleable signatures, such as s-values in the upper range, calculate a new s-value
+        // with 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141 - s1 and flip v from 27 to 28 or
+        // vice versa. If your library also generates signatures with 0/1 for v instead 27/28, add 27 to v to accept
+        // these malleable signatures as well.
+        require(uint256(s) <= 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0, "ECDSA: invalid signature 's' value");
+        require(v == 27 || v == 28, "ECDSA: invalid signature 'v' value");
+
+        // If the signature is valid (and not malleable), return the signer address
+        address signer = ecrecover(hash, v, r, s);
+        require(signer != address(0), "ECDSA: invalid signature");
+
+        return signer;
+    }
+
+    /**
+     * @dev Returns an Ethereum Signed Message, created from a `hash`. This
+     * produces hash corresponding to the one signed with the
+     * https://eth.wiki/json-rpc/API#eth_sign[`eth_sign`]
+     * JSON-RPC method as part of EIP-191.
+     *
+     * See {recover}.
+     */
+    function toEthSignedMessageHash(bytes32 hash) internal pure returns (bytes32) {
+        // 32 is the length in bytes of hash,
+        // enforced by the type signature above
+        return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", hash));
+    }
+
+    /**
+     * @dev Returns an Ethereum Signed Typed Data, created from a
+     * `domainSeparator` and a `structHash`. This produces hash corresponding
+     * to the one signed with the
+     * https://eips.ethereum.org/EIPS/eip-712[`eth_signTypedData`]
+     * JSON-RPC method as part of EIP-712.
+     *
+     * See {recover}.
+     */
+    function toTypedDataHash(bytes32 domainSeparator, bytes32 structHash) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
+    }
+}
+
 contract Ownable {
 
     address private owner;
@@ -746,8 +852,8 @@ contract Market is Ownable {
         
     }
     
-    mapping (address => bool) public managers;
-    uint8 private managersCount;
+    mapping (uint8 => address) public managers;
+    mapping (bytes32 => bool) public executedTask;
     uint16 public taskIndex;
     
     mapping (address => bool) public authorizedERC721;
@@ -763,7 +869,7 @@ contract Market is Ownable {
     address payable walletAddress;
     
     modifier isManager() {
-        require(managers[msg.sender] == true, "Not manager");
+        require(managers[0] == msg.sender || managers[1] == msg.sender || managers[2] == msg.sender, "Not manager");
         _;
     }
     
@@ -787,8 +893,9 @@ contract Market is Ownable {
         
         walletAddress = payable(0xAD334543437EF71642Ee59285bAf2F4DAcBA613F);
         
-        managers[msg.sender] = true;
-        managersCount += 1;
+        managers[0] = msg.sender;
+        managers[1] = 0xc21008ba368A5dc8D07559828eFB14fBC4696b92;
+        managers[2] = 0x5fb6Acaf7669E1bFf16716181A774ac0aa0Af3d1;
     }
     
     function createTrade(address _nftAddress, uint256 _assetId, uint256 _price, uint256 _coinIndex, uint256 _end) public {
@@ -934,9 +1041,9 @@ contract Market is Ownable {
     }
 
     function adminCancelTrade(bytes32 _tradeId, bytes memory _sig) public isManager {
-        uint8 mId = 8;
+        uint8 mId = 1;
         bytes32 taskHash = keccak256(abi.encode(_tradeId, taskIndex, mId));
-        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
+        verifyApproval(taskHash, _sig);
         Trade memory trade = trades[_tradeId];
         trades[_tradeId].active = false;
         userTrades[trade.seller].remove(_tradeId);
@@ -953,9 +1060,9 @@ contract Market is Ownable {
     }
     
     function addCoin(uint256 _coinIndex, address _tokenAddress, string memory _tokenSymbol, string memory _tokenName, bool _active, bytes memory _sig) public isManager {
-        uint8 mId = 7;
+        uint8 mId = 2;
         bytes32 taskHash = keccak256(abi.encode(_coinIndex, _tokenAddress, _tokenSymbol, _tokenName, _active, taskIndex, mId));
-        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
+        verifyApproval(taskHash, _sig);
         tradeCoins[_coinIndex].tokenAddress = _tokenAddress;
         tradeCoins[_coinIndex].symbol = _tokenSymbol;
         tradeCoins[_coinIndex].name = _tokenName;
@@ -963,86 +1070,49 @@ contract Market is Ownable {
     }
 
     function autorizenft(address _nftAddress, bytes memory _sig) public isManager {
-        uint8 mId = 6;
+        uint8 mId = 3;
         bytes32 taskHash = keccak256(abi.encode(_nftAddress, taskIndex, mId));
-        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
+        verifyApproval(taskHash, _sig);
         authorizedERC721[_nftAddress] = true;
     }
     
     function deautorizenft(address _nftAddress, bytes memory _sig) public isManager {
-        uint8 mId = 5;
+        uint8 mId = 4;
         bytes32 taskHash = keccak256(abi.encode(_nftAddress, taskIndex, mId));
-        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
+        verifyApproval(taskHash, _sig);
         authorizedERC721[_nftAddress] = false;
     }
     
     function setFeesContract(address _contract, bytes memory _sig) public isManager {
-        uint8 mId = 4;
+        uint8 mId = 5;
         bytes32 taskHash = keccak256(abi.encode(_contract, taskIndex, mId));
-        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
+        verifyApproval(taskHash, _sig);
         feesContract = FeesContract(_contract);
     }
     
     function setWallet(address _wallet, bytes memory _sig) public isManager  {
-        uint8 mId = 3;
+        uint8 mId = 6;
         bytes32 taskHash = keccak256(abi.encode(_wallet, taskIndex, mId));
-        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
+        verifyApproval(taskHash, _sig);
         walletAddress = payable(_wallet);
     }
     
-    function splitSignature(bytes memory _sig) internal pure returns (uint8, bytes32, bytes32)  {
-        require(_sig.length == 65);
-        bytes32 r;
-        bytes32 s;
-        uint8 v;
-    
-        assembly {
-          r := mload(add(_sig, 32))
-          s := mload(add(_sig, 64))
-          v := byte(0, mload(add(_sig, 96)))
-        }
-        return (v, r, s);
+    function verifyApproval(bytes32 _taskHash, bytes memory _sig) private {
+        require(executedTask[_taskHash] == false, "Task already executed");
+        address mSigner = ECDSA.recover(ECDSA.toEthSignedMessageHash(_taskHash), _sig);
+        require(mSigner == managers[0] || mSigner == managers[1] || mSigner == managers[2], "Invalid signature"  );
+        require(mSigner != msg.sender, "Signature from different managers required");
+        executedTask[_taskHash] = true;
+        taskIndex += 1;
     }
+    
+    function changeManager(address _manager, uint8 _index, bytes memory _sig) public isManager {
+        require(_index >= 0 && _index <= 2, "Invalid index");
+        uint8 mId = 100;
+        bytes32 taskHash = keccak256(abi.encode(_manager, taskIndex, mId));
+        verifyApproval(taskHash, _sig);
+        managers[_index] = _manager;
+    }
+    
 
-    function recoverSigner(bytes32 message, bytes memory _sig) internal pure returns (address)  {
-        uint8 v;
-        bytes32 r;
-        bytes32 s;
-        (v, r, s) = splitSignature(_sig);
-        return ecrecover(message, v, r, s);
-    }
-  
-    function verifyApproval(bytes32 _taskHash, bytes memory _sig) private returns(bool approved) {
-        address signer = recoverSigner(_taskHash, _sig);
-        if (managers[signer] == true){
-            taskIndex +=1;
-            return(true);
-        } else {
-            return(false);
-        }
-    }
-    
-    function addManager(address _manager) public onlyOwner {
-        require(managersCount < 3, "Adding another manager requires 2nd approval");
-        managers[_manager] = true;
-    }
-    
-    function addManager(address _manager, bytes memory _sig) public isManager {
-        uint8 mId = 1;
-        bytes32 taskHash = keccak256(abi.encode(_manager, taskIndex, mId));
-        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
-        managers[_manager] = true;
-        managersCount += 1;
-    }
-    
-    function removeManager(address _manager, bytes memory _sig) public isManager {
-        require(managersCount > 3, "A minimum of 3 managers are required");
-        uint8 mId = 2;
-        bytes32 taskHash = keccak256(abi.encode(_manager, taskIndex, mId));
-        require(verifyApproval(taskHash, _sig) == true, "Invalid 2nd approval");
-        managers[_manager] = false;
-        managersCount -= 1;
-    }
-    
-    
 }
