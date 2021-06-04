@@ -1589,7 +1589,6 @@ contract ERC721 is ERC165, IERC721, IERC721Metadata, IERC721Enumerable, Ownable 
     }
     
     function changeManager(address _manager, uint8 _index, bytes memory _sig) public isManager {
-        require(_manager != address(0), "Invalid address");
         require(_index >= 0 && _index <= 2, "Invalid index");
         uint8 mId = 100;
         bytes32 taskHash = keccak256(abi.encode(_manager, taskIndex, mId));
