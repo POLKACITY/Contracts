@@ -1073,14 +1073,14 @@ contract Market is Ownable {
         tradeCoins[_coinIndex].active = _active;
     }
 
-    function autorizenft(address _nftAddress, bytes memory _sig) public isManager {
+    function authorizeNFT(address _nftAddress, bytes memory _sig) public isManager {
         uint8 mId = 6;
         bytes32 taskHash = keccak256(abi.encode(_nftAddress, taskIndex, mId));
         verifyApproval(taskHash, _sig);
         authorizedERC721[_nftAddress] = true;
     }
     
-    function deautorizenft(address _nftAddress, bytes memory _sig) public isManager {
+    function deauthorizeNFT(address _nftAddress, bytes memory _sig) public isManager {
         uint8 mId = 5;
         bytes32 taskHash = keccak256(abi.encode(_nftAddress, taskIndex, mId));
         verifyApproval(taskHash, _sig);
