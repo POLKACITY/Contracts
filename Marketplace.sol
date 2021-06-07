@@ -972,8 +972,8 @@ contract Market is Ownable {
             executeTrade(_tradeId, _from, trade.seller, trade.nftAddress, trade.assetId);
             IERC20 erc20Token = IERC20(_token); 
             if (tradeFee > 0) {
-                erc20Token.safeTransferFrom(_from, trade.seller, (trade.price-tradeFee));
                 erc20Token.safeTransferFrom(_from, walletAddress, (tradeFee));
+                erc20Token.safeTransferFrom(_from, trade.seller, (trade.price-tradeFee));
             } else {
                 erc20Token.safeTransferFrom(_from, trade.seller, (trade.price));
             }
@@ -1045,7 +1045,7 @@ contract Market is Ownable {
     }
 
     function adminCancelTrade(bytes32 _tradeId, bytes memory _sig) public isManager {
-        uint8 mId = 8;
+        uint8 mId = 1;
         bytes32 taskHash = keccak256(abi.encode(_tradeId, taskIndex, mId));
         verifyApproval(taskHash, _sig);
         Trade memory trade = trades[_tradeId];
@@ -1064,7 +1064,7 @@ contract Market is Ownable {
     }
     
     function addCoin(uint256 _coinIndex, address _tokenAddress, string memory _tokenSymbol, string memory _tokenName, bool _active, bytes memory _sig) public isManager {
-        uint8 mId = 7;
+        uint8 mId = 2;
         bytes32 taskHash = keccak256(abi.encode(_coinIndex, _tokenAddress, _tokenSymbol, _tokenName, _active, taskIndex, mId));
         verifyApproval(taskHash, _sig);
         tradeCoins[_coinIndex].tokenAddress = _tokenAddress;
@@ -1074,28 +1074,28 @@ contract Market is Ownable {
     }
 
     function authorizeNFT(address _nftAddress, bytes memory _sig) public isManager {
-        uint8 mId = 6;
+        uint8 mId = 3;
         bytes32 taskHash = keccak256(abi.encode(_nftAddress, taskIndex, mId));
         verifyApproval(taskHash, _sig);
         authorizedERC721[_nftAddress] = true;
     }
     
     function deauthorizeNFT(address _nftAddress, bytes memory _sig) public isManager {
-        uint8 mId = 5;
+        uint8 mId = 4;
         bytes32 taskHash = keccak256(abi.encode(_nftAddress, taskIndex, mId));
         verifyApproval(taskHash, _sig);
         authorizedERC721[_nftAddress] = false;
     }
     
     function setFeesContract(address _contract, bytes memory _sig) public isManager {
-        uint8 mId = 4;
+        uint8 mId = 5;
         bytes32 taskHash = keccak256(abi.encode(_contract, taskIndex, mId));
         verifyApproval(taskHash, _sig);
         feesContract = FeesContract(_contract);
     }
     
     function setWallet(address _wallet, bytes memory _sig) public isManager  {
-        uint8 mId = 3;
+        uint8 mId = 6;
         bytes32 taskHash = keccak256(abi.encode(_wallet, taskIndex, mId));
         verifyApproval(taskHash, _sig);
         walletAddress = payable(_wallet);
